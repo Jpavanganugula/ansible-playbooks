@@ -1,0 +1,18 @@
+NFS
+---
+  - name: creating nfs
+    hosts: nfs1
+    tasks:
+#     - name: create fs
+#       command: mkfs -t ext4 /dev/sdj
+     - name: create mp
+       file: dest=/newnis state=directory
+     - command: mount -t ext4 /dev/sdj /newnis
+     - command: chmod 777 /newnis
+     - lineinfile: dest=/etc/fstab line='/dev/sdj       /newnis ext4    defaults        0       0'
+     - lineinfile: dest=/etc/exports line='/newnis      10.10.23.119(rw,sync)'
+     - command: exportfs -avr
+     - service: name=nfs state=restarted
+     - command: showmount -e
+       register: mount
+     - debug: var=mount.stdout
