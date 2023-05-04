@@ -1,0 +1,30 @@
+NIS
+
+---
+ - name: adding user
+   hosts: nis1
+   tasks: 
+     - name: autofs
+       lineinfile: dest=/etc/auto.master line='/-       /etc/auto.nis   --timeout=60'
+       register: autofs
+     - name: autofs.sub
+       file: dest=/etc/auto.nis state=touch
+     - lineinfile: dest=/etc/auto.nis line='/newnis     -rw,soft,intr   10.10.23.122:/newnis'
+     - service: name=autofs state=restarted
+     - command: df -h
+       register: df
+     - debug: var=df.stdout
+     - name: adding the group
+       group: name=nis gid=5000 state=present
+       register: group
+     - name: adding user in group
+       user: name=user1 group=nis create_home=no
+       when: group.changed
+     - name: create HD
+       file: dest=/newnis/user1 state=directory owner=user1 group=nis
+     - copy: dest=/newnis/user1/.bash_logout src=/etc/skel/.bash_logout owner=user1 group=nis
+     - copy: dest=/newnis/user1/.bash_profile src=/etc/skel/.bash_profile owner=user1 group=nis
+     - copy: dest=/newnis/user1/.bashrc src=/etc/skel/.bashrc owner=user1 group=nis 
+     - command: id -a user1
+       register: id
+     - debug: var=id.stdout
