@@ -1,0 +1,114 @@
+Ansible configuration file - /etc/ansible/ansible.cfg
+update varaiable in /etc/hosts - ex. cases grouping/individual/
+adhoc-commands (means when needed or necessary)
+#ansible-doc -l - to check list of modules
+#ansible --version - to check version
+#ansible <hostname> -m ping - to check version of os
+#cd /etc/ansible- in this we have 3 file/dir 1)ansible.cfg 2)hosts 3)roles--very important
+cat /etc/ansible/hosts----------INVENTORY FILE all inventories deployed freom here only like individual,group,from which user & password to be login, etc...(6 cases/ways)
+fork value to divide total servers into sets as defined by fork value (100=5=25)
+to customized playbooks update in configuration file /etc/ansible/facts.d/version.d -------for specified filter creation in playbooks
+
+
+
+
+
+
+COMMOANDS:((-m modules),(-a argument),(all-to know all server/ip info: at a time))
+
+#ansible-doc -l - to check list of modules
+#ansible --version - to check version
+#ansible <hostname> -m ping - to check version of os
+#ansible <groupname> -m ping
+#ansible all -m ping
+#ansible all -a "uname -a;date"
+#ansible all -a "df -h /"- to check all servers root fs info
+#ansible <hostname> -m shell -a "command"
+     (Inventory/groupname)
+ #ansible all -m setup -a "filter=ansible_hostname/ip_addr"
+                                    (variable)
+#ansible -i /tmp/guru thu -m shell -a "id -a"
+#ansible --list-hosts jeji ---- to view hostname only from inventory group
+#ansible -m setup 
+
+
+
+cases:in inventory variables(host variables,groupvariable)
+
+case:1-Inventory file individual
+[lab1]
+vara-sys-1
+vara-sys-2
+vara-sys-3
+vara-sys-4
+vara-sys-5
+#ansible lab1 -m shell -a "id -a"
+#ansible lab1 -m ping
+#ansible ansible-master-15 -m ping - for individual hostname ping check
+#ansible jeji -m ping  (or) # ansible -i /etc/ansible/hosts jeji -m ping - for group hostname check total hosts available in greoup will show
+# ansible jeji:vlab1 -m ping - to check multiple group check at a time
+
+case2:  create group
+[lab1]
+vara-sys-1
+vara-sys-2
+vara-sys-3
+vara-sys-4
+vara-sys-5
+#ansible lab1 -m shell -a "id -a"
+[lab2]
+vara-sys[1:5]
+#ansible lab2 -m ping
+
+case:3 group of groups or combination of multiple groups into a single group
+to create childrean
+[vlab:children]
+vlab1
+vlab2
+#ansible -i /etc/ansible/hosts vlab -m ping
+#ansible vlab:childrean -m ping
+
+
+
+case:4 provide instance name for calling(alias names) linux user or windows user 
+
+in this case we have to update in only linux/windows user in that time we can user case4 to seggrigate in which type of os should update ,by which user can login,from which host,from which connection or port to be used wikth providing alis name instead of full details wecan create or configure in /etc/ansible/hosts like alias and simply use alias name in firing command
+vi /etc/ansible/hosts
+web ansible_hosts=vara-sys-1	ansible_connection=ssh ansible_user=root
+
+[group]
+web     ansible_host=ansible-master-15   ansible_connection=ssh ansible_user=root
+app     ansible_host=ans-client-15-A   ansible_connection=ssh ansible_user=root
+
+#ansible -i /etc/ansible/hosts  web -m ping or
+#ansible web -m ping
+#ansible -i /tmp/hosts  web -m ping
+or
+#ansible -i /etc/ansible/hosts  web -m ping
+
+
+
+case:5 
+
+vi  /etc/ansible/hosts
+
+vara-sys-15	   ansible_ssh_user=vara(local user)   ansible_ssh_pass=vara(credentials) [must fire when logged with speficied user]
+#ansible ans-client-15-A -a "touch /root/1"
+vara-sys-15    ansible_user=ec2-user(non local user)   ansible_ssh_private_key_file=/home/vara-sys-15.pem(key location)   
+
+create a group as [case5] check in client machine and change passwd check for deny or not
+# ansible case5 -m shell -a "touch /tmp/aaa"
+#ansible ans-client-15-B -m shell -a "mkdir /opt/jeji/"
+
+
+
+                                debug
+
+---
+ - name: This is my playbook
+   hosts: jeji
+   tasks:
+   - name: display below message
+#     debug: msg="welcome to varains"
+#      msg: welcome to varains
+#
