@@ -1,0 +1,91 @@
+---
+
+- hosts: all
+  gather_facts: true
+  tasks:
+    - name: Grouping servers by OS family
+      become: true
+      group_by:
+        key: "{{ ansible_os_family }}"
+
+
+
+
+
+############# GENERIC COMMANDS FOR DEBIAN BASED SYSTEMS ######################
+
+
+
+- hosts: Debian
+  gather_facts: true
+  become: yes
+  max_fail_percentage: 0
+  tasks:
+
+    - name: Clean apt
+      apt:
+       autoclean: yes
+
+    - name: Patching Debian Systems. BE PATIENT!!!!!!!
+      apt:
+        name: '*'
+        state: latest
+        force_apt_get: true
+      register: upgraded
+      
+
+    - name: Rebooting Debian Servers
+      shell: 'sleep 1 && shutdown -r now "Reboot now" && sleep1'
+      async: 1
+      poll: 0
+      become: true
+      when: upgraded.changed
+      register: reboot
+
+
+    - name: Waiting for servers to come up.
+      wait_for:
+       port: 22
+       host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+       search_regex: OpenSSH
+       delay: 60
+      when: reboot.changed
+      connection: local
+###################################################################################
+
+
+
+################################# REDHAT BASED SYSTEMS ############################
+
+- hosts: RedHat
+  gather_facts: true
+  become: yes
+  max_fail_percentage: 0
+  tasks:
+
+    - name: Cleaning Yum Cache
+      shell: yum clean all
+       warn=false
+
+    - name: Patching Redhat Systems. BE PATIENT!!!!!!
+      yum:
+        name: '*'
+        state: latest
+      register: upgraded
+
+    - name: Rebooting RedHat Servers
+      shell: 'sleep 1 && shutdown -r now "Reboot now" && sleep1'
+      async: 1
+      poll: 0
+      become: true
+      when: upgraded.changed
+      register: reboot
+
+    - name: Waiting for servers to come up.
+      wait_for:
+       port: 22
+       host: '{{ (ansible_ssh_host|default(ansible_host))|default(inventory_hostname) }}'
+       search_regex: OpenSSH
+       delay: 60
+      when: reboot.changed
+      connection: local

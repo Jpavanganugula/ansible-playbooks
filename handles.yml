@@ -1,0 +1,257 @@
+
+Fix ansible role name for Galaxy. (no hyphens duh)
+galaxy_info:
+  author: Kodiak Firesmith
+  description: Manage scheduled-reboot, a script-driven framework for performing automated patching & rebooting of systems
+  company: Woods Hole Oceanographic Institution
+  min_ansible_version: 2.0
+  role_name: scheduled_reboot
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - xenial
+        - bionic
+        - focal
+        - jammy
+
+  galaxy_tags:
+    - systemd
+    - scheduled-reboot
+...
+================================
+ubuntu
+---
+
+- name: install scheduled-reboot deb package
+  ansible.builtin.apt:
+    name: scheduled-reboot
+    state: "{{ scheduled_reboot_package_state }}"
+==============================
+Ensure that no matter what someone puts into group/host_vars, setting…
+---
+
+- include_tasks: Ubuntu.yml
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Enable the post-reboot service unit
+  ansible.builtin.systemd:
+    name: post-reboot.service
+    enabled: "{{ scheduled_reboot_post_reboot_service_enabled }}"
+
+- name: Install cron job
+  ansible.builtin.cron:
+    name: scheduled-reboot
+    cron_file: scheduled-reboot
+    user: root
+    job: /usr/local/bin/scheduled-reboot
+    state: "{{ scheduled_reboot_cronjob_state }}"
+    minute: "{{ reboot_schedule.split(' ')[0] }}"
+    hour: "{{ reboot_schedule.split(' ')[1] }}"
+    day: "{{ reboot_schedule.split(' ')[2] }}"
+    month: "{{ reboot_schedule.split(' ')[3] }}"
+    weekday: "{{ reboot_schedule.split(' ')[4] }}"
+  when: reboot_schedule is defined and scheduled_reboot_cronjob_state == 'present'
+
+- name: Customize defaults file - email when disabled
+  ansible.builtin.lineinfile:
+    path: /etc/default/scheduled-reboot
+    regexp: '^\s*#?\s*email_when_disabled='
+    line: "email_when_disabled='{{ scheduled_reboot_email_when_disabled|lower }}'"
+  when: scheduled_reboot_email_when_disabled is defined
+
+- name: Customize defaults file - mailto
+  ansible.builtin.lineinfile:
+    path: /etc/default/scheduled-reboot
+    regexp: '^\s*#?\s*mailto='
+    line: "mailto='{{ scheduled_reboot_mailto|lower }}'"
+  when: scheduled_reboot_mailto is defined
+
+- name: Customize defaults file - reboots disabled
+  ansible.builtin.lineinfile:
+    path: /etc/default/scheduled-reboot
+    regexp: '^\s*#?\s*scheduled_reboots_disabled='
+    line: "scheduled_reboots_disabled='{{ scheduled_reboot_scheduled_reboots_disabled|lower }}'"
+  when: scheduled_reboot_scheduled_reboots_disabled is defined
+
+- name: Customize defaults file - upgrade at shutdown
+  ansible.builtin.lineinfile:
+    path: /etc/default/scheduled-reboot
+    regexp: '^\s*#?\s*upgrade_at_shutdown='
+    line: "upgrade_at_shutdown='{{ scheduled_reboot_upgrade_at_shutdown|lower }}'"
+  when: scheduled_reboot_upgrade_at_shutdown is defined
+====================================================
+---
+- hosts: localhost
+  remote_user: root
+  roles:
+    - scheduled-reboot
+First release. Meta and README first-pass completed.
+==============================
+Add python script for log parsing
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+#
+# Description:
+# This script searches the current Ansible log for unreachable
+# hosts and failed tasks.
+#
+# Please adjust function 'send_log' matching your environment.
+#
+# Author: Joerg Kastning -- joerg(PUNKT)kastning(AT)uni-bielefeld(PUNKT)de
+# License: MIT
+
+import glob
+import os
+import smtplib
+from email.mime.text import MIMEText
+
+def send_log(log):
+  f = open(log, 'rb')
+  msg = MIMEText(f.read())
+  f.close()
+  
+  msg['Subject'] = 'Content of %s' % log
+  msg['From'] = 'root@example.com'
+  msg['To'] = 'receiver@example.com'
+  
+  s = smtplib.SMTP('localhost')
+  s.sendmail('root@example.com', ['receiver@example.com'], msg.as_string())
+  s.quit()
+
+def main():
+  list_of_files = glob.glob('/var/log/ansible/*.log')
+  latest_file = max(list_of_files, key=os.path.getctime)
+  theFile = open(latest_file, 'r')
+  FILE = theFile.readlines()
+  theFile.close()
+  eventlist = []
+  
+  for line in FILE:
+    if ('unreachable' or 'failed') in line:
+      if not ('unreachable=0' and 'failed=0') in line:
+        send_log(latest_file)
+        break
+
+if __name__ == "__main__":
+  main()
+====================================
+Try to cleanup master here.
+#!/bin/bash
+##############################################################################
+
+source /absolute/path/to/variables.txt
+
+# Functions ##################################################################
+get_advisories() {
+  yum updateinfo list all 2>/dev/null | awk '/RHSA-[0-9]{4}:[0-9]{4}/ {print $(NF-2)}' | sort -u
+}
+
+get_remote_advisories() {
+  rm "${REMOTE_ADVISORIES}" 2>/dev/null
+  for HOST in "${REMOTE_HOSTS}"
+  do
+    ssh -i "${SSH_KEY}" ${REMOTE_USER}@${HOST} "$(typeset -f get_advisories); get_advisories" >>"${REMOTE_ADVISORIES}" 2>/dev/null
+  done
+}
+
+create_patch_set() {
+  if [ ! -f "${BASELINE}" ]
+  then
+    get_advisories >"${BASELINE}" 2>/dev/null
+    if [ -n "$REMOTE_HOSTS" ]
+    then
+      get_remote_advisories
+      mv "${BASELINE}" "${TMPFILE}"
+      cat "${TMPFILE}" "${REMOTE_ADVISORIES}" | sort -u >"${BASELINE}" 2>/dev/null
+      rm "${REMOTE_ADVISORIES}" "${TMPFILE}"
+    fi
+    cp "${BASELINE}" "${CURRENT_PATCH_SET}" 2>/dev/null
+  else
+    if [ -f "${ADVISORIES}" ] && [ -s "${ADVISORIES}" ]
+    then
+      mv "${ADVISORIES}" "${BASELINE}"
+    fi
+    get_advisories >"${ADVISORIES}"
+    if [ -n "$REMOTE_HOSTS" ]
+    then
+      get_remote_advisories
+      mv "${ADVISORIES}" "${TMPFILE}"
+      cat "${TMPFILE}" "${REMOTE_ADVISORIES}" | sort -u >"${ADVISORIES}" 2>/dev/null
+      rm "${REMOTE_ADVISORIES}" "${TMPFILE}"
+    fi
+    comm -13 "${BASELINE}" "${ADVISORIES}" >"${CURRENT_PATCH_SET}"
+  fi
+}
+
+create_vars() {
+  if [ -f "${VARS}" ]
+  then
+    mv "${VARS}" "${VARS}.bak_`date +%Y-%m-%d`"
+  fi
+  ADVISORY_LIST=""
+  while read NAME
+  do
+    if [[ -z $ADVISORY_LIST ]]
+    then
+      ADVISORY_LIST="${NAME}"
+    else
+      ADVISORY_LIST="${ADVISORY_LIST},${NAME}"
+    fi
+  done < "${CURRENT_PATCH_SET}"
+
+  cat >"${VARS}" <<EOF
+---
+  Set_`date +%Y_%m`: ${ADVISORY_LIST}
+  ###################################################
+  rhsa_to_install: "{{ Set_`date +%Y_%m` }}"
+EOF
+}
+
+create_mail() {
+  cat >"${MAIL_TEXT}" <<EOF
+Hallo,
+zu den unten genannten Stichtagen erfolgt die zentral gesteuerte Installation der Red Hat Advisories.
+  
+Es gelten folgende Stichtage fuer die Installation:
+
+  * ${DATE1} Installation Phase 1
+  * ${DATE2} Installation Phase 2
+  * ${DATE3} Installation Phase 3
+  * ${DATE4} Installation Phase 4
+
+Die von den Advisories betroffenen Pakete werden nur dann aktualisiert, falls die Advisories nicht bereits vor dem jeweiligen Stichtag durch den Systembetreiber eingespielt wurden. Der folgende Befehl kann direkt per Copy & Paste zur Installation genutzt werden.
+
+~~~
+yum -y update-minimal --advisory ${ADVISORY_LIST}
+~~~
+
+Informationen zu den genannten Advisories findet man unter der URL: https://access.redhat.com/errata/#/
+
+Sollte die Installation der genannten Advisories erforderlich sein, werden die betroffenen Systeme nach der Installation automatisch neugestartet.
+EOF
+}
+
+send_mail() {
+  /usr/bin/mailx -s 'Ankündigung der Installation von Red Hat Advisories' "${MAIL_RCP}" <"${MAIL_TEXT}"
+}
+
+# Main #######################################################################
+create_patch_set
+create_vars
+create_mail
+send_mail
+=================================
+Fixed wrong role name in example playbook patch_rhel.yml.
+---
+- hosts: all
+
+  tasks:
+    - name: Group by OS
+      group_by: key=os_{{ ansible_distribution }}
+      changed_when: False
+
+- hosts: os_RedHat
+  roles:
+    - rhel-patchmanagement
+====================
